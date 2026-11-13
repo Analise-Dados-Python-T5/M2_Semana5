@@ -6,6 +6,11 @@ extrair() aqui simplifica para CSV (os mesmos vendas/clientes/produtos da
 Semana 4); a API e o scraping (ver scripts/01_extrair_fontes.py) entrariam
 do mesmo jeito, como chamadas extras dentro dela.
 
+transformar() reaproveita as mesmas funções de 02_transformar.py (limpeza +
+enriquecimento) e 03_construir_dimensional.py (dimensões + fato) -- mesmo
+padrão de import que 03_construir_dimensional.py já usa para reaproveitar
+02_transformar.py, para não reescrever a mesma lógica pela terceira vez.
+
 carregar() usa to_sql com if_exists="append" -- por isso ele DUPLICA tudo se
 for rodado 2x. Isso é de propósito: é exatamente o problema que a Parte 2
 (scripts/05_carga_incremental.py) resolve.
@@ -16,8 +21,8 @@ execução deste script.
 
 Rode com:  python3 scripts/pipeline_etl.py
 """
+import importlib.util
 import os
-import unicodedata
 from pathlib import Path
 
 import pandas as pd
@@ -31,9 +36,17 @@ DB_PASSWORD = os.environ["DB_PASSWORD"]
 CONEXAO_POSTGRES = f"postgresql+psycopg2://postgres:{DB_PASSWORD}@localhost:5432/vitrine"
 
 
-def _sem_acento(texto: str) -> str:
-    nfkd = unicodedata.normalize("NFKD", texto)
-    return "".join(c for c in nfkd if not unicodedata.combining(c))
+def _importar(nome_modulo: str, nome_arquivo: str):
+    """Importa um script pelo nome do arquivo -- começam com dígito, não dá
+    para fazer "import 02_transformar" direto."""
+    spec = importlib.util.spec_from_file_location(nome_modulo, ROOT / "scripts" / nome_arquivo)
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+transformar_mod = _importar("transformar", "02_transformar.py")
+dimensional_mod = _importar("dimensional", "03_construir_dimensional.py")
 
 
 def extrair():
@@ -44,48 +57,13 @@ def extrair():
 
 
 def transformar(vendas, clientes, produtos):
-    # --- limpeza: produto duplicado (101/118) ---
-    # nome_normalizado: só para AGRUPAR (sem acento, minúsculo, sem espaço
-    # nas pontas), nunca para exibir -- é onde 101 ("Tênis Runner Pro") e
-    # 118 ("tenis runner pro ") se encontram.
-    produtos["nome_normalizado"] = produtos["nome_produto"].str.strip().str.lower().apply(_sem_acento)
-    mapa_duplicados = produtos.groupby("nome_normalizado")["id_produto"].min()
-    produtos["id_produto_canonico"] = produtos["nome_normalizado"].map(mapa_duplicados)
-
-    # mapa_produto: TODO id bruto (inclusive o duplicado) -> id canônico
+    produtos = transformar_mod.tratar_produtos(produtos)
     mapa_produto = produtos.set_index("id_produto")["id_produto_canonico"]
-    produtos = produtos[produtos["id_produto"] == produtos["id_produto_canonico"]]
+    vendas = transformar_mod.tratar_vendas(vendas, mapa_produto)
+    vendas = transformar_mod.enriquecer(vendas)
 
-    # --- limpeza: datas em 2 formatos + valor ausente (venda 38) ---
-    vendas["id_produto"] = vendas["id_produto"].map(mapa_produto)
-    iso = pd.to_datetime(vendas["data_venda"], format="%Y-%m-%d", errors="coerce")
-    br = pd.to_datetime(vendas["data_venda"], format="%d/%m/%Y", errors="coerce")
-    vendas["data_venda"] = iso.fillna(br)
-    vendas["valor_unitario"] = pd.to_numeric(vendas["valor_unitario"], errors="coerce")
-    vendas["status_qualidade"] = vendas["valor_unitario"].apply(
-        lambda v: "valor_ausente_revisar" if pd.isna(v) else "ok"
-    )
-
-    # --- enriquecimento ---
-    vendas["receita"] = vendas["quantidade"] * vendas["valor_unitario"]
-
-    # --- modelagem dimensional ---
-    dim_produto = produtos[["id_produto", "nome_produto", "categoria"]].drop_duplicates()
-    dim_produto.index.name = "sk_produto"
-    dim_produto = dim_produto.reset_index(drop=True)
-    dim_produto.index.name = "sk_produto"
-
-    dim_cliente = clientes[["id_cliente", "nome_cliente", "cidade", "segmento"]].drop_duplicates()
-    dim_cliente.index.name = "sk_cliente"
-    dim_cliente = dim_cliente.reset_index(drop=True)
-    dim_cliente.index.name = "sk_cliente"
-
-    fato_vendas = vendas.merge(dim_produto.reset_index(), on="id_produto", how="left")
-    fato_vendas = fato_vendas.merge(dim_cliente.reset_index(), on="id_cliente", how="left")
-    colunas = ["sk_produto", "sk_cliente", "data_venda", "quantidade",
-               "valor_unitario", "receita", "status_qualidade"]
-    fato_vendas = fato_vendas[colunas]
-
+    dim_produto, dim_cliente = dimensional_mod.construir_dimensoes(produtos, clientes)
+    fato_vendas = dimensional_mod.construir_fato(vendas, dim_produto, dim_cliente)
     return dim_produto, dim_cliente, fato_vendas
 
 

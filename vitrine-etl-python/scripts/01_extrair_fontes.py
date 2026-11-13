@@ -11,24 +11,19 @@ Pré-requisito do extrair_staging_postgres(): já ter rodado o pipeline SQL da
 Semana 4 (vitrine-dw/sql/01_staging_elt_load.sql) no banco "vitrine", para
 staging.vendas_raw existir.
 
-A API e o concorrente da Vitrine não existem de verdade -- para rodar com
-dados reais em aula, este script usa duas fontes públicas reais no lugar
-delas: a FakeStoreAPI (o JSON de volta tem o mesmo formato que a API do
-sistema da loja da Vitrine devolveria) e o books.toscrape.com, site público
-feito pelo time do Scrapy especialmente para prática de scraping (mesma
-lógica de um concorrente real, trocando só a URL e o seletor). Use
-usar_mock=True em extrair_api_produtos()/extrair_preco_concorrente() para
-voltar aos mocks locais (raw/api_produtos_mock.json e
-raw/concorrente_smartwatch.html) e rodar sem depender de rede.
+A API e o concorrente da Vitrine não existem de verdade -- este script usa
+dois arquivos fictícios que simulam essas respostas: raw/api_produtos_mock.json
+(catálogo de produtos, como se fosse o retorno de uma API) e
+raw/concorrente_smartwatch.html (a página do concorrente, para o scraping
+com BeautifulSoup). A lógica de leitura é a mesma que seria usada contra uma
+API ou um site reais, só a origem dos bytes (arquivo local, não rede) muda.
 
 Rode com:  python3 scripts/01_extrair_fontes.py
 """
 import os
-import re
 from pathlib import Path
 
 import pandas as pd
-import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
@@ -38,8 +33,6 @@ RAW = ROOT / "raw"
 load_dotenv(ROOT / ".env")
 DB_PASSWORD = os.environ["DB_PASSWORD"]
 CONEXAO_POSTGRES = f"postgresql+psycopg2://postgres:{DB_PASSWORD}@localhost:5432/vitrine"
-URL_API_PRODUTOS = "https://fakestoreapi.com/products"
-URL_CONCORRENTE = "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html"
 
 
 def extrair_csv() -> pd.DataFrame:
@@ -62,42 +55,28 @@ def extrair_staging_postgres() -> pd.DataFrame:
     return vendas_staging
 
 
-def extrair_api_produtos(usar_mock: bool = False) -> pd.DataFrame:
+def extrair_api_produtos() -> pd.DataFrame:
     """Fonte 3: API -- catálogo de produtos atualizado, direto do sistema da
-    loja (sempre mais atual que o produtos.csv). Para rodar de verdade em
-    aula, usamos a FakeStoreAPI, uma API pública real: o JSON de volta (id,
-    title, price, category) é o mesmo formato que a API do sistema da loja
-    da Vitrine devolveria."""
-    if usar_mock:
-        produtos_api = pd.read_json(RAW / "api_produtos_mock.json")
-        print(f"[API] catálogo de produtos (mock): {len(produtos_api)} produtos")
-        print(produtos_api.head(3))
-    else:
-        resposta = requests.get(URL_API_PRODUTOS, timeout=30)
-        resposta.raise_for_status()
-        produtos_api = pd.DataFrame(resposta.json())
-        print(f"[API] catálogo de produtos: {len(produtos_api)} produtos")
-        print(produtos_api[["id", "title", "price", "category"]].head(3))
+    loja (sempre mais atual que o produtos.csv). A Vitrine e sua API não
+    existem de verdade, então raw/api_produtos_mock.json simula o JSON que
+    esse endpoint devolveria: pd.read_json lê o arquivo exatamente como
+    pd.DataFrame(resposta.json()) leria a resposta de uma API de verdade."""
+    produtos_api = pd.read_json(RAW / "api_produtos_mock.json")
+    print(f"[API] catálogo de produtos: {len(produtos_api)} produtos")
+    print(produtos_api.head(3))
     return produtos_api
 
 
-def extrair_preco_concorrente(usar_mock: bool = False) -> float:
+def extrair_preco_concorrente() -> float:
     """Fonte 4: Web Scraping -- preço de um produto no site de um
-    concorrente, para comparar com o preço da Vitrine. Para rodar de verdade
-    em aula, usamos o books.toscrape.com, site público feito pelo time do
-    Scrapy especialmente para prática de scraping: a mesma lógica serve para
-    o preço de um concorrente real, trocando só a URL e o seletor."""
-    if usar_mock:
-        html = (RAW / "concorrente_smartwatch.html").read_text(encoding="utf-8")
-        texto_preco = BeautifulSoup(html, "html.parser").select_one(".preco-produto").get_text(strip=True)
-        preco = float(texto_preco.replace("R$", "").replace(".", "").replace(",", ".").strip())
-        print(f"[Scraping] preço do concorrente (mock): R$ {preco:.2f}")
-    else:
-        resposta = requests.get(URL_CONCORRENTE, timeout=30)
-        resposta.encoding = "utf-8"
-        texto_preco = BeautifulSoup(resposta.text, "html.parser").select_one(".price_color").get_text(strip=True)
-        preco = float(re.search(r"[\d.]+", texto_preco).group())
-        print(f"[Scraping] preço do concorrente: £{preco:.2f}")
+    concorrente, para comparar com o preço da Vitrine. O concorrente também
+    é fictício: raw/concorrente_smartwatch.html simula a página dele, e o
+    BeautifulSoup extrai o preço do mesmo jeito que extrairia de uma página
+    real, só trocando a URL por um arquivo local."""
+    html = (RAW / "concorrente_smartwatch.html").read_text(encoding="utf-8")
+    texto_preco = BeautifulSoup(html, "html.parser").select_one(".preco-produto").get_text(strip=True)
+    preco = float(texto_preco.replace("R$", "").replace(".", "").replace(",", ".").strip())
+    print(f"[Scraping] preço do concorrente: R$ {preco:.2f}")
     return preco
 
 
@@ -109,12 +88,6 @@ if __name__ == "__main__":
     except Exception as exc:
         print(f"[Postgres] pulado (precisa do banco 'vitrine' rodando): {exc}")
     print()
-    try:
-        extrair_api_produtos()
-    except Exception as exc:
-        print(f"[API] pulado (precisa de internet): {exc}")
+    extrair_api_produtos()
     print()
-    try:
-        extrair_preco_concorrente()
-    except Exception as exc:
-        print(f"[Scraping] pulado (precisa de internet): {exc}")
+    extrair_preco_concorrente()

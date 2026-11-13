@@ -10,7 +10,7 @@
 --           reclassificação) entra em staging.vendas_raw com updated_at =
 --           agora -- é o registro que a carga incremental vai pegar, e
 --           também a venda que prova por que SCD Tipo 2 importa (ver
---           sql/04_consultas_scd.sql).
+--           sql/05_consultas_scd.sql).
 --
 -- Rode com:
 --   psql -h localhost -U postgres -d vitrine -f sql/02_simular_mudancas.sql

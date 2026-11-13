@@ -23,7 +23,6 @@ vitrine-etl-python/
 │   └── concorrente_smartwatch.html   # simula a página do concorrente (scraping)
 ├── processed/      # saída de scripts/02_transformar.py (demonstração isolada)
 ├── scripts/        # Python -- ver "Como cada arquivo se encaixa"
-│   ├── 00_dinamica_detetives_dados.py
 │   ├── 01_extrair_fontes.py
 │   ├── 02_transformar.py
 │   ├── 03_construir_dimensional.py
@@ -44,7 +43,6 @@ vitrine-etl-python/
 
 | Arquivo(s) | O que demonstra |
 |---|---|
-| `scripts/00_dinamica_detetives_dados.py` | Aquecimento: achar duplicidade, valor ausente, valor negativo e inconsistência de nomenclatura numa tabela pequena, antes de automatizar nada |
 | `scripts/01_extrair_fontes.py` | As 4 fontes do ETL em Python: CSV, PostgreSQL (staging), API e Web Scraping |
 | `scripts/02_transformar.py` | Limpeza (produto duplicado, datas em 2 formatos, valor ausente) e enriquecimento com Pandas -- os MESMOS 3 problemas da Semana 4, resolvidos agora em Python |
 | `scripts/03_construir_dimensional.py` | Star Schema construído com `merge()` do Pandas, em vez de `CREATE TABLE` + `INSERT` em SQL |
@@ -64,7 +62,6 @@ vitrine-etl-python/
 cd vitrine-etl-python
 
 # ---- Parte 1: ETL tradicional ----
-python3 scripts/00_dinamica_detetives_dados.py     # opcional, só a dinâmica
 python3 scripts/01_extrair_fontes.py               # demonstração das 4 fontes (não carrega nada)
 python3 scripts/02_transformar.py                  # grava processed/*.csv (não precisa de banco)
 python3 scripts/03_construir_dimensional.py        # só imprime as dimensões (não precisa de banco)
@@ -85,14 +82,12 @@ Ajuste usuário/senha da conexão conforme seu ambiente -- a string de conexão
 usada nos scripts Python é a mesma do slide (`postgresql+psycopg2://postgres:senha@localhost:5432/vitrine`),
 só um exemplo didático.
 
-> **A API e o concorrente da Vitrine não existem de verdade.** Por padrão,
-> `scripts/01_extrair_fontes.py` usa duas fontes públicas reais no lugar
-> delas, para rodar com dados reais em aula: a
-> [FakeStoreAPI](https://fakestoreapi.com/products) (catálogo de produtos)
-> e o [books.toscrape.com](https://books.toscrape.com/) (preço do
-> concorrente via scraping). Passe `usar_mock=True` para voltar aos mocks
-> locais (`raw/api_produtos_mock.json` e `raw/concorrente_smartwatch.html`)
-> e rodar sem depender de internet.
+> **A API e o concorrente da Vitrine não existem de verdade.**
+> `scripts/01_extrair_fontes.py` usa dois arquivos fictícios que simulam
+> essas respostas: `raw/api_produtos_mock.json` (catálogo de produtos) e
+> `raw/concorrente_smartwatch.html` (preço do concorrente via scraping). A
+> aula roda 100% offline -- sem depender de internet ou de APIs públicas de
+> terceiros.
 
 ## O fio que conecta Parte 1 e Parte 2
 
