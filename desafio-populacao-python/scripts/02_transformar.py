@@ -14,14 +14,15 @@ Duas estratégias de chave aqui:
 Rode com:  python3 scripts/02_transformar.py
 Lê de:  as três funções de scripts/01_extrair_fontes.py
 """
-import importlib.util
-import unicodedata
+import importlib.util #para importar o 01_extrair_fontes.py
+import unicodedata #para remover acentos na hora de comparar nomes de estados
 from pathlib import Path
 
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 
+#importa o código pelo nome do arquivo
 _spec = importlib.util.spec_from_file_location("extrair_fontes", ROOT / "scripts" / "01_extrair_fontes.py")
 extrair_fontes = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(extrair_fontes)
@@ -29,27 +30,26 @@ _spec.loader.exec_module(extrair_fontes)
 
 def _sem_acento(texto: str) -> str:
     nfkd = unicodedata.normalize("NFKD", texto)
-    return "".join(c for c in nfkd if not unicodedata.combining(c))
+    return "".join(c for c in nfkd if not unicodedata.combining(c)) #remontasse a string descartando os acentos
 
 
 def juntar_fontes(estados: pd.DataFrame, populacao: pd.DataFrame, populacao_2010: pd.DataFrame) -> pd.DataFrame:
-    """Junta estados (API) + populacao (Wikipédia, por nome normalizado) +
-    populacao_2010 (CSV, por sigla).
+    
+    estados = estados.copy()
+    populacao = populacao.copy()
 
-    TODO:
-    1. Crie "nome_normalizado" em estados e em populacao: strip() +
-       lower() + _sem_acento() em cima do nome do estado (confira o nome da
-       coluna em cada DataFrame -- a Etapa 1 pode ter nomes diferentes).
-    2. df = estados.merge(populacao, on="nome_normalizado", how="left").
-    3. Confira se ALGUMA linha ficou sem população (populacao_2022 ou
-       populacao_2026 nulos) -- indica um nome que não bateu. Se acontecer,
-       imprima as linhas problemáticas.
-    4. df = df.merge(populacao_2010, on="sigla", how="left") -- essa chave
-       é "sigla" (código), não precisa normalizar nada.
-    5. Devolva só as colunas finais: id, sigla, nome, regiao,
-       populacao_2010, populacao_2022, populacao_2026.
-    """
-    raise NotImplementedError("TODO: Etapa 2 -- juntar_fontes()")
+    estados["nome_normalizado"] = estados["nome"].str.strip().str.lower().apply(_sem_acento)
+    populacao["nome_normalizado"] = populacao["estado"].str.strip().str.lower().apply(_sem_acento)
+
+    df = estados.merge(populacao, on="nome_normalizado", how="left")   # how="left": mantém todos os 27 estados, mesmo sem match
+    
+    faltando = df[df["populacao_2022"].isna()]                          # linhas onde o merge não achou população = nome não bateu
+    if len(faltando):
+        print("Estados sem match:")
+        print(faltando[["nome"]])
+
+    df = df.merge(populacao_2010, on="sigla", how="left")   # 2ª junção
+    return df [["id", "sigla", "nome", "regiao", "populacao_2010", "populacao_2022", "populacao_2026"]]
 
 
 if __name__ == "__main__":

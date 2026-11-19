@@ -29,78 +29,57 @@ Fonte 3 -- Web Scraping (análoga ao preço do concorrente, slide 15):
 
 Rode com:  python3 scripts/01_extrair_fontes.py
 """
-from pathlib import Path
+from pathlib import Path #para montar o caminho dos arquivos
 
 import pandas as pd
-import requests
+import requests #faz chamadas do HTTP
 from bs4 import BeautifulSoup
 
-ROOT = Path(__file__).resolve().parent.parent
-RAW = ROOT / "raw"
+ROOT = Path(__file__).resolve().parent.parent #é o caminho do script
+RAW = ROOT / "raw" #caminho do csv
 
 URL_API_ESTADOS = "https://servicodados.ibge.gov.br/api/v1/localidades/estados"
 URL_WIKIPEDIA_POPULACAO = "https://pt.wikipedia.org/wiki/Lista_de_unidades_federativas_do_Brasil_por_popula%C3%A7%C3%A3o"
-USER_AGENT_WIKIPEDIA = {"User-Agent": "aula-etl-python-fiesc/1.0 (uso educacional)"}
+USER_AGENT_WIKIPEDIA = {"User-Agent": "aula-etl-python-fiesc/1.0 (uso educacional)"} #identifição user agente para fazer as requisições
 
 
 def extrair_populacao_2010_csv() -> pd.DataFrame:
-    """Fonte 1: CSV -- o Censo 2010 (sigla, nome_estado, populacao_2010),
-    já pronto em raw/populacao_2010.csv. Igual à Vitrine (slide 10):
-    pd.read_csv(caminho).
-
-    TODO:
-    1. pd.read_csv(RAW / "populacao_2010.csv").
-    2. Imprima len(df) e df.head(3), e retorne o DataFrame.
-    """
-    raise NotImplementedError("TODO: Etapa 1 -- extrair_populacao_2010_csv()")
+   df = pd.read_csv(RAW / "populacao_2010.csv") #ler o csv inteiro e salva numa variavel dataframe
+   print(f"[CSV] {len(df)} estados") #printando a quantidade de estados/linhas
+   print(df.head(5)) #printar os 5 primeiros dados
+   return df
 
 
 def extrair_estados_api() -> pd.DataFrame:
-    """Fonte 2: API do IBGE -- devolve id, sigla, nome e região de cada
-    estado. Igual à Vitrine (slide 13): requests.get(url) -> .json() ->
-    pd.DataFrame(...).
-
-    TODO:
-    1. Faça requests.get(URL_API_ESTADOS, timeout=30) e chame
-       resposta.raise_for_status().
-    2. Transforme resposta.json() (uma lista de dicts) num DataFrame com
-       pd.DataFrame(...).
-    3. O campo "regiao" vem como um dict aninhado ({"id":.., "nome":..}).
-       Extraia só o nome da região para uma coluna "regiao" simples, por
-       exemplo com: df["regiao"].apply(lambda r: r["nome"]).
-    4. Deixe as colunas finais como: id, sigla, nome, regiao.
-    5. Imprima len(df) e df.head(3), e retorne o DataFrame.
-    """
-    raise NotImplementedError("TODO: Etapa 1 -- extrair_estados_api()")
+   resposta = requests.get(URL_API_ESTADOS, timeout=30) #evitar que o script fique travado se a api não responder
+   resposta.raise_for_status() #trazer o erro se o status do http não for 2XX
+   df = pd.DataFrame(resposta.json()) #o json traz a lista de dados e o data frase transforma em tabela
+   df["regiao"] = df["regiao"].apply(lambda x: x["nome"]) #consolidar cada região
+   df = df[["id", "sigla", "nome", "regiao"]] #mantém só as colunas que interressam
+   print(f"[API] {len(df)} estados")
+   print(df.head(5))
+   return df
 
 
 def extrair_populacao_wikipedia() -> pd.DataFrame:
-    """Fonte 3: Web Scraping -- devolve o nome do estado e a população de
-    2022 (Censo) e 2026 (estimativa) a partir da tabela da Wikipédia. Igual
-    à Vitrine (slide 15): requests.get(url).text -> BeautifulSoup -> extrair
-    só o que interessa.
-
-    TODO:
-    1. Faça requests.get(URL_WIKIPEDIA_POPULACAO, timeout=30,
-       headers=USER_AGENT_WIKIPEDIA); ajuste resposta.encoding = "utf-8"
-       antes de ler resposta.text.
-    2. html = BeautifulSoup(resposta.text, "html.parser")
-    3. Ache a PRIMEIRA tabela com classe "wikitable" (ex.:
-       html.select_one("table.wikitable")) -- é a tabela "Lista", não a de
-       "Por região" que vem depois na mesma página.
-    4. tabela.select("tr") devolve TODAS as linhas, inclusive 2 linhas de
-       cabeçalho (a 1ª agrupa "População" em 2 colunas; a 2ª tem "2026
-       (est.)" e "2022" separados) -- pule as 2 primeiras com [2:]. A
-       ÚLTIMA linha é "Total" (soma do Brasil, não é um estado) -- descarte.
-    5. Para cada <tr> de dado restante: célula.get_text(strip=True) já
-       resolve o nome do estado (1ª célula). A população vem nas células 2
-       (2026) e 3 (2022) -- remova "\xa0" e espaços normais antes de
-       int(...).
-    6. Monte um DataFrame com as colunas: estado, populacao_2022,
-       populacao_2026.
-    7. Imprima len(df) e df.head(3), e retorne o DataFrame.
-    """
-    raise NotImplementedError("TODO: Etapa 1 -- extrair_populacao_wikipedia()")
+   resposta = requests.get(URL_WIKIPEDIA_POPULACAO, headers=USER_AGENT_WIKIPEDIA, timeout=30)
+   resposta.encoding = "utf-8"
+   html = BeautifulSoup (resposta.text, "html.parser") #transformar o HTML bruto em uma estrutura navegável
+   tabela = html.find("table", {"class": "wikitable"}) #achar a tabela
+   linhas = tabela.select("tr")[2:] #iniciar as linhas pulando as 2 primeiras do cabeçalho
+   dados = [] 
+   for tr in linhas:
+      celulas = tr.find_all(["th", "td"]) #lendo cada celula
+      estado = celulas[0].get_text(strip=True)  #trazer o nome do estado sem espaços nas pontas
+      if estado == "Total": #então a gente pula linha
+         continue
+      pop_2026 = int(celulas[1].get_text(strip=True).replace("\xa0","").replace(" ", "")) #\xa0 espaço não separavel que o wikipedia utiliza para separar milhares
+      pop_2022 = int(celulas[2].get_text(strip=True).replace("\xa0","").replace(" ", ""))
+      dados.append({"estado": estado, "populacao_2022": pop_2022, "populacao_2026": pop_2026}) 
+   df = pd.DataFrame(dados) #adiciono no data frame
+   print(f"[Wikipedia] {len(df)} estados")
+   print(df.head(5))
+   return df
 
 
 if __name__ == "__main__":
