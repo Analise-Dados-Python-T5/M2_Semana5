@@ -42,7 +42,12 @@ CREATE TABLE dw_populacao.controle_etl (
     ultima_carga    timestamp NOT NULL
 );
 INSERT INTO dw_populacao.controle_etl (nome_pipeline, ultima_carga)
-VALUES ('etl_populacao_brasil', '1900-01-01');
+VALUES ('etl_populacao_brasil', '2023-01-01');
 
-SELECT 'dw_populacao.dim_estado_scd2' AS tabela, count(*) FROM dw_populacao.dim_estado_scd2
-UNION ALL SELECT 'dw_populacao.controle_etl', count(*) FROM dw_populacao.controle_etl;
+SELECT 
+    'dw_populacao.dim_estado_scd2' AS tabela, 
+    count(*) 
+    FROM dw_populacao.dim_estado_scd2
+UNION ALL SELECT 'dw_populacao.controle_etl', 
+    count(*) 
+    FROM dw_populacao.controle_etl;

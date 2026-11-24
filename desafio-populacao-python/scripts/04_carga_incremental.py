@@ -26,7 +26,7 @@ from sqlalchemy import create_engine, text
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 DB_PASSWORD = os.environ["DB_PASSWORD"]
-CONEXAO_POSTGRES = f"postgresql+psycopg2://postgres:{DB_PASSWORD}@localhost:5432/vitrine"
+CONEXAO_POSTGRES = f"postgresql+psycopg2://postgres:{DB_PASSWORD}@localhost:5432/ibge"
 NOME_PIPELINE = "etl_populacao_brasil"
 ANO_ESTIMATIVA = 2026
 
@@ -36,29 +36,25 @@ _spec.loader.exec_module(transformar)
 
 
 def estados_com_populacao_alterada(df_unificado: pd.DataFrame, engine) -> pd.DataFrame:
-    """Compara a população 2026 (raspada agora) com a população da versão
-    VIGENTE de cada estado em dw_populacao.dim_estado_scd2.
 
-    TODO:
-    1. Leia a versão vigente de cada estado:
-       SELECT sigla, populacao FROM dw_populacao.dim_estado_scd2
-       WHERE registro_atual = true
-    2. Faça merge(df_unificado, vigente, on="sigla") e filtre só as linhas
-       onde populacao_2026 (a nova) é DIFERENTE de populacao (a vigente).
-    3. Imprima quantos estados mudaram (deve ser a maioria -- a população
-       muda todo ano) e devolva esse subconjunto com as colunas: id, sigla,
-       nome, regiao, populacao_2026.
-    """
-    raise NotImplementedError("TODO: Etapa 5 -- estados_com_populacao_alterada()")
+   vigente = pd.read_sql(
+      "SELECT sigla, populacao as populacao_vigente FROM dw_populacao.dim_estado_scd2 WHERE registro_atual = true",
+      engine,
+   )
+   
+   comparado = df_unificado.merge(vigente, on="sigla", how="left")
+   alterados = comparado[comparado["populacao_2026"] != comparado["populacao_vigente"]]
+
+   print (f"{len(alterados)} de {len(comparado)} estados tiveram a população alterada")
+   return alterados[["id", "sigla", "nome", "regiao", "populacao_2026"]]
 
 
 def avancar_controle(engine):
-    """TODO: UPDATE dw_populacao.controle_etl SET ultima_carga = now()
-    WHERE nome_pipeline = NOME_PIPELINE -- só depois que a Etapa 6 (SCD
-    Tipo 2) tiver gravado as novas versões com sucesso. Mesma regra da
-    Vitrine: o controle avança DEPOIS do sucesso, nunca antes."""
-    raise NotImplementedError("TODO: Etapa 5 -- avancar_controle()")
-
+   with engine.begin() as conn:
+      conn.execute(
+         text("UPDATE dw_populacao.controle_etl SET ultima_carga = now() WHERE nome_pipeline = :nome"),
+         {"nome": NOME_PIPELINE}
+      )
 
 if __name__ == "__main__":
     engine = create_engine(CONEXAO_POSTGRES)

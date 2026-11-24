@@ -8,20 +8,23 @@
 -- histórico: igual à Vitrine corrigindo a cidade da Laura Macedo
 -- (sql/03_scd_tipo1_cliente.sql). Isso é SCD Tipo 1.
 --
--- TODO:
--- 1. Escreva um SELECT "ANTES" mostrando sk_estado, sigla, nome_estado,
---    ano_referencia de onde sigla = 'PE' (deve devolver 2 linhas: 2010 e
---    2022, as duas com "Pernanbuco").
--- 2. Escreva um INSERT ... ON CONFLICT (sigla, ano_referencia) DO UPDATE
---    que sobrescreva nome_estado para 'Pernambuco' em TODAS as linhas da
---    sigla 'PE'. Dica: o conflito é por (sigla, ano_referencia) -- ver
---    UNIQUE em sql/00_dw_populacao_schema.sql -- então um INSERT ...
---    SELECT * FROM dim_estado_scd2 WHERE sigla = 'PE' dispara o ON
---    CONFLICT uma vez para CADA linha existente (2010 e 2022 -- não filtre
---    por ano_referencia aqui, nome_estado não é um campo versionado).
--- 3. Escreva um SELECT "DEPOIS" confirmando que são as MESMAS 2 sk_estado,
---    só com o nome corrigido nas duas -- sem linha nova.
---
+
+-- ANTES (2 linhas, 2010 e 2022, as duas com "Pernanbuco"):
+SELECT sk_estado, sigla, nome_estado, ano_referencia FROM dw_populacao.dim_estado_scd2 WHERE sigla = 'PE';
+
+-- INSERT ... SELECT ... ON CONFLICT
+INSERT INTO dw_populacao.dim_estado_scd2 (
+    id_estado, sigla, nome_estado, regiao, populacao, ano_referencia, data_inicio, data_fim, registro_atual
+)
+SELECT id_estado, sigla, 'Pernanbuco', regiao, populacao, ano_referencia, data_inicio, data_fim, registro_atual
+FROM dw_populacao.dim_estado_scd2
+WHERE sigla = 'PE'
+ON CONFLICT (sigla, ano_referencia)                -- dispara quando a combinação sigla+ano já existe (as 2 linhas de PE)
+DO UPDATE SET nome_estado = EXCLUDED.nome_estado; 
+
+-- DEPOIS: as MESMAS 2 sk_estado, nome corrigido nas duas -- sem linha nova.
+SELECT sk_estado, sigla, nome_estado, ano_referencia FROM dw_populacao.dim_estado_scd2 WHERE sigla = 'PE';
+
 -- Rode com:
 --   psql -h localhost -U postgres -d vitrine -f sql/01_scd_tipo1_correcao.sql
 -- =============================================================================

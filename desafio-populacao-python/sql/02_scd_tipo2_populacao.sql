@@ -13,30 +13,27 @@
 -- repita para os demais. (Em produção isso seria um loop no Python --
 -- aqui, uma vez na mão primeiro ajuda a entender o padrão.)
 --
--- TODO:
--- 1. BEGIN;
--- 2. UPDATE dw_populacao.dim_estado_scd2 SET data_fim = ..., registro_atual
---    = false WHERE sigla = ... AND ano_referencia = 2022 AND registro_atual
---    = true;
--- 3. INSERT INTO dw_populacao.dim_estado_scd2 (id_estado, sigla,
---    nome_estado, regiao, populacao, ano_referencia, data_inicio, data_fim,
---    registro_atual) VALUES (..., 2026, ..., NULL, true); -- reaproveite
---    id_estado/nome_estado/regiao da versão 2022 que você acabou de fechar.
--- 4. COMMIT;
--- 5. Escreva um SELECT final mostrando as TRÊS versões lado a lado (sigla,
---    populacao, ano_referencia, data_inicio, data_fim, registro_atual),
---    ordenado por data_inicio, para o estado que você versionou.
---
--- Use DATE '2026-01-01' como data de corte (data_fim da versão 2022 e
--- data_inicio da versão 2026) -- é uma simplificação didática da data real
--- de publicação da estimativa do IBGE.
---
--- Rode só depois de confirmar com a Etapa 5 que o estado realmente mudou
--- (senão duplica uma versão igual à anterior).
 -- Rode com:
 --   psql -h localhost -U postgres -d vitrine -f sql/02_scd_tipo2_populacao.sql
--- =============================================================================
 
--- TODO: BEGIN; UPDATE ...; INSERT ...; COMMIT;
+BEGIN;      -- abre uma transação: UPDATE e INSERT só valem juntos, de uma vez (COMMIT) ou nenhum deles (ROLLBACK)
 
--- TODO: SELECT final com as três versões
+-- fecha a versão vigente (2022): marca o fim e tira o status de "atual"
+UPDATE dw_populacao.dim_estado_scd2
+SET data_fim = DATE '2026-01-01', registro_atual = false
+WHERE sigla = 'PE' AND ano_referencia = 2022 AND registro_atual = true;
+
+-- abre a nova versão (2026): linha nova, com data_fim NULL (ainda vigente)
+INSERT INTO dw_populacao.dim_estado_scd2 (
+    id_estado, sigla, nome_estado, regiao, populacao, ano_referencia, data_inicio, data_fim, registro_atual
+) VALUES (
+    26, 'PE', 'Pernambuco', 'Nordeste', 9583176, 2026, DATE '2026-01-01', NULL, true
+);
+
+COMMIT;     -- confirma as 2 mudanças (UPDATE + INSERT) de uma vez só
+
+-- confere: 2 linhas de PE (2022 fechada, 2026 vigente), ordenadas pela data de início
+SELECT sk_estado, sigla, populacao, ano_referencia, data_inicio, data_fim, registro_atual
+FROM dw_populacao.dim_estado_scd2
+WHERE sigla = 'PE'
+ORDER BY data_inicio;
